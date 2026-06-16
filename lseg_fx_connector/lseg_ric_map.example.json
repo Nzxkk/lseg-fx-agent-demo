@@ -1,0 +1,13 @@
+{
+  "EUR/USD": "EUR=",
+  "USD/JPY": "JPY=",
+  "DXY": ".DXY",
+  "GBP/USD": "GBP=",
+  "USD/CAD": "CAD=",
+  "USD/SEK": "SEK=",
+  "USD/CHF": "CHF=",
+  "vix": ".VIX",
+  "us10y": "US10YT=RR",
+  "de10y": "DE10YT=RR",
+  "jp10y": "JP10YT=RR"
+}

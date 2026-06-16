@@ -1,0 +1,4 @@
+lseg-data
+refinitiv-data
+pandas
+numpy

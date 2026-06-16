@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LSEG FX Signal Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1>LSEG 外汇交易信号台</h1>
+        <p>EUR/USD、USD/JPY、DXY_PROXY 的信号、因子和影子回测</p>
+      </div>
+      <div class="actions">
+        <button id="refreshBtn" type="button">刷新</button>
+      </div>
+    </header>
+
+    <section class="controls">
+      <label>
+        开始日期
+        <input id="startInput" type="date" value="2025-01-01">
+      </label>
+      <label>
+        结束日期
+        <input id="endInput" type="date">
+      </label>
+      <div id="statusBox" class="status">等待数据</div>
+    </section>
+
+    <section class="panel chat-panel">
+      <div class="section-title">
+        <h2>Agent Chat</h2>
+        <span>用聊天生成策略、回测和报告</span>
+      </div>
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chatInput" type="text" placeholder="例如：生成外汇策略并回测：当 EUR/USD 处于长期上升趋势时，只在短期回调结束后买入；长期下降趋势时，只在短期反弹结束后做空">
+        <button id="chatSendBtn" type="button">发送</button>
+      </div>
+      <div class="chat-quick">
+        <button type="button" data-chat="生成外汇策略并回测">生成策略并回测</button>
+        <button type="button" data-chat="生成外汇策略并回测：当 EUR/USD 处于长期上升趋势时，只在短期回调结束后买入；当 EUR/USD 处于长期下降趋势时，只在短期反弹结束后做空。">趋势回调策略</button>
+        <button type="button" data-chat="生成中文报告">生成中文报告</button>
+        <button type="button" data-chat="解释当前信号">解释当前信号</button>
+      </div>
+    </section>
+
+    <section class="panel strategy-panel">
+      <div class="section-title">
+        <h2>策略设置</h2>
+        <span id="strategyModeText">多因子合成</span>
+      </div>
+      <div class="strategy-rule-row">
+        <label>
+          策略规则
+          <select id="ruleStrategy">
+            <option value="factor_blend" selected>多因子合成</option>
+            <option value="eurusd_trend_pullback">EUR/USD 趋势回调</option>
+          </select>
+        </label>
+        <label>
+          新闻评分
+          <select id="newsScoreMode">
+            <option value="rule" selected>规则评分</option>
+            <option value="llm">大模型评分</option>
+          </select>
+        </label>
+        <div id="strategySummary" class="strategy-summary">趋势、利差/政策、美元周期、新闻和风险按比例合成一个交易分数。</div>
+      </div>
+      <div id="factorControls" class="weight-grid">
+        <label>
+          趋势
+          <input id="trendWeight" type="number" min="0" max="100" step="1" value="30">
+        </label>
+        <label>
+          利差/政策
+          <input id="carryWeight" type="number" min="0" max="100" step="1" value="25">
+        </label>
+        <label>
+          美元周期
+          <input id="dollarWeight" type="number" min="0" max="100" step="1" value="20">
+        </label>
+        <label>
+          新闻
+          <input id="newsWeight" type="number" min="0" max="100" step="1" value="15">
+        </label>
+        <label>
+          风险
+          <input id="riskWeight" type="number" min="0" max="100" step="1" value="10">
+        </label>
+        <label>
+          交易阈值
+          <input id="scoreThreshold" type="number" min="0.05" max="1" step="0.01" value="0.35">
+        </label>
+      </div>
+      <div id="pullbackControls" class="rule-card-grid" hidden>
+        <article>
+          <span>长期方向</span>
+          <strong>60 日均线</strong>
+          <p>价格在 60 日均线上方且均线向上，只考虑买入；价格在下方且均线向下，只考虑做空。</p>
+        </article>
+        <article>
+          <span>短期入场</span>
+          <strong>5 日动能</strong>
+          <p>上升趋势等回调修复；下降趋势等反弹转弱。没有出现转折就保持 HOLD。</p>
+        </article>
+        <article>
+          <span>适用标的</span>
+          <strong>EUR/USD</strong>
+          <p>该规则只接管 EUR/USD；USD/JPY 和 DXY_PROXY 继续使用多因子模型。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel agent-panel">
+      <div class="section-title">
+        <h2>FX Vibe Agent</h2>
+        <span>按当前策略设置自动生成信号、回测和解释</span>
+      </div>
+      <div class="agent-actions">
+        <button id="agentBtn" type="button">运行 Agent</button>
+        <button id="llmReportBtn" type="button">生成中文报告</button>
+      </div>
+      <div class="agent-output-grid">
+        <div>
+          <h3>Agent 决策</h3>
+          <div id="agentDecisions" class="agent-decisions"></div>
+        </div>
+        <div>
+          <h3>风控检查</h3>
+          <div id="agentRiskChecks" class="agent-risk"></div>
+        </div>
+      </div>
+      <details class="advanced-section">
+        <summary>大模型报告设置</summary>
+        <div class="llm-config-grid">
+          <label>
+            大模型
+            <select id="llmProvider">
+              <option value="qwen" selected>Qwen / 通义千问</option>
+              <option value="openai">OpenAI 兼容接口</option>
+            </select>
+          </label>
+          <label>
+            API Key
+            <input id="llmApiKey" type="password" placeholder="粘贴 DashScope / Qwen API Key">
+          </label>
+          <label>
+            模型
+            <input id="llmModel" type="text" value="qwen-plus">
+          </label>
+          <label>
+            接口地址
+            <input id="llmApiUrl" type="text" value="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions">
+          </label>
+        </div>
+      </details>
+      <details class="advanced-section">
+        <summary>Agent 执行细节</summary>
+        <details class="agent-subdetails">
+          <summary>执行流程</summary>
+          <div id="skillPlan" class="skill-plan"></div>
+        </details>
+        <details class="agent-subdetails">
+          <summary>运行记录</summary>
+          <div id="agentSteps" class="agent-steps"></div>
+        </details>
+        <details class="agent-subdetails">
+          <summary>报告原文</summary>
+          <pre id="agentReport">暂无 Agent 报告。</pre>
+        </details>
+      </details>
+      <div class="section-title llm-title">
+        <h2>大模型中文报告</h2>
+        <span>只负责解释和写作，不负责生成交易信号</span>
+      </div>
+      <pre id="llmReport">暂无大模型报告。</pre>
+    </section>
+
+    <section class="metrics" id="metrics"></section>
+
+    <section>
+      <div class="section-title">
+        <h2>最新信号</h2>
+        <span id="asOf"></span>
+      </div>
+      <div class="signal-grid" id="signals"></div>
+    </section>
+
+    <section class="split">
+      <div class="panel">
+        <h2>净值曲线</h2>
+        <svg id="equityChart" viewBox="0 0 760 220" role="img" aria-label="equity curve"></svg>
+      </div>
+      <div class="panel">
+        <h2>因子明细</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>标的</th>
+                <th>趋势</th>
+                <th>利差/政策</th>
+                <th>美元周期</th>
+                <th>新闻</th>
+                <th>风险</th>
+              </tr>
+            </thead>
+            <tbody id="factorRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>中文报告</h2>
+      <pre id="report"></pre>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

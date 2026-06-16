@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LSEG FX Signal Dashboard</title>
+  <style>
+    :root {
+      --bg: #f6f5f1;
+      --panel: #ffffff;
+      --ink: #202124;
+      --muted: #6b6f76;
+      --line: #dedbd2;
+      --green: #16794c;
+      --red: #b23a32;
+      --amber: #9a6a06;
+      --blue: #2f65b0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+    .page { max-width: 1180px; margin: 0 auto; padding: 28px 24px 48px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; border-bottom: 1px solid var(--line); padding-bottom: 18px; }
+    h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 720; }
+    .subtitle { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .asof { color: var(--muted); font-size: 14px; text-align: right; white-space: nowrap; }
+    section { margin-top: 24px; }
+    h2 { font-size: 17px; margin: 0 0 12px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric, .signal-card, .chart-panel, .table-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(30, 30, 30, 0.04);
+    }
+    .metric { padding: 14px 16px; min-height: 88px; }
+    .metric span { display: block; color: var(--muted); font-size: 13px; }
+    .metric strong { display: block; margin-top: 8px; font-size: 24px; }
+    .signals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .signal-card { padding: 16px; min-height: 218px; border-top-width: 4px; }
+    .signal-card.long { border-top-color: var(--green); }
+    .signal-card.short { border-top-color: var(--red); }
+    .signal-card.hold { border-top-color: var(--amber); }
+    .signal-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .instrument { font-weight: 720; font-size: 18px; }
+    .side { font-size: 13px; font-weight: 720; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; }
+    .price { margin-top: 14px; font-size: 26px; font-weight: 720; }
+    .signal-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+    .signal-grid div { border-top: 1px solid var(--line); padding-top: 8px; }
+    .signal-grid span { display: block; color: var(--muted); font-size: 12px; }
+    .signal-grid strong { display: block; margin-top: 3px; font-size: 16px; }
+    .signal-card p { color: var(--muted); font-size: 13px; line-height: 1.45; min-height: 40px; }
+    .chart-panel { padding: 16px; }
+    .equity-chart { width: 100%; height: 220px; display: block; }
+    .axis { stroke: var(--line); stroke-width: 1; }
+    .equity-line { stroke: var(--blue); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .table-panel { overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 650; background: #fbfaf7; }
+    .empty { padding: 24px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    @media (max-width: 860px) {
+      header { display: block; }
+      .asof { text-align: left; margin-top: 12px; }
+      .metrics, .signals { grid-template-columns: 1fr; }
+      .page { padding: 20px 14px 36px; }
+      h1 { font-size: 24px; }
+      table { min-width: 720px; }
+      .table-panel { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>LSEG 外汇宏观新闻信号台</h1>
+        <p class="subtitle">EUR/USD、USD/JPY、DXY 的交易信号、因子拆解和影子回测</p>
+      </div>
+      <div class="asof">信号日期：2026-06-10</div>
+    </header>
+
+    <section>
+      <h2>影子回测摘要</h2>
+      <div class="metrics">
+        <div class="metric"><span>总收益</span><strong>+1.54%</strong></div>
+        <div class="metric"><span>最大回撤</span><strong>-0.14%</strong></div>
+        <div class="metric"><span>Sharpe</span><strong>12.05</strong></div>
+        <div class="metric"><span>有持仓天数</span><strong>50</strong></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>最新交易信号</h2>
+      <div class="signals">
+            <article class="signal-card hold">
+              <div class="signal-top">
+                <span class="instrument">EUR/USD</span>
+                <span class="side">HOLD</span>
+              </div>
+              <div class="price">1.1157</div>
+              <div class="signal-grid">
+                <div><span>权重</span><strong>+0.00</strong></div>
+                <div><span>置信度</span><strong>0.25</strong></div>
+                <div><span>分数</span><strong>-0.25</strong></div>
+              </div>
+              <p>carry/policy negative (-0.67); dollar cycle negative (-0.53)</p>
+            </article>
+            
+
+            <article class="signal-card long">
+              <div class="signal-top">
+                <span class="instrument">USD/JPY</span>
+                <span class="side">LONG</span>
+              </div>
+              <div class="price">153.4700</div>
+              <div class="signal-grid">
+                <div><span>权重</span><strong>+0.56</strong></div>
+                <div><span>置信度</span><strong>0.56</strong></div>
+                <div><span>分数</span><strong>+0.56</strong></div>
+              </div>
+              <p>trend positive (+0.61); carry/policy positive (+1.00); dollar cycle positive (+0.53)</p>
+            </article>
+            
+
+            <article class="signal-card hold">
+              <div class="signal-top">
+                <span class="instrument">DXY</span>
+                <span class="side">HOLD</span>
+              </div>
+              <div class="price">104.3901</div>
+              <div class="signal-grid">
+                <div><span>权重</span><strong>+0.00</strong></div>
+                <div><span>置信度</span><strong>0.27</strong></div>
+                <div><span>分数</span><strong>+0.27</strong></div>
+              </div>
+              <p>trend positive (+0.39); carry/policy positive (+0.82); dollar cycle positive (+0.53); risk negative (-0.40)</p>
+            </article>
+            </div>
+    </section>
+
+    <section>
+      <h2>净值曲线</h2>
+      <div class="chart-panel">
+    <svg class="equity-chart" viewBox="0 0 760 180" role="img" aria-label="Equity curve">
+      <line x1="0" y1="172" x2="760" y2="172" class="axis" />
+      <polyline points="0.00,172.00 10.13,163.53 20.27,155.18 30.40,149.09 40.53,143.09 50.67,137.27 60.80,131.67 70.93,126.36 81.07,121.38 91.20,116.80 101.33,112.62 111.47,108.89 121.60,105.66 131.73,102.91 141.87,100.67 152.00,98.94 162.13,97.69 172.27,96.93 182.40,96.62 192.53,96.72 202.67,97.22 212.80,98.07 222.93,99.22 233.07,100.63 243.20,102.23 253.33,104.00 263.47,105.88 273.60,107.83 283.73,109.80 293.87,111.77 304.00,111.77 314.13,111.77 324.27,111.77 334.40,111.77 344.53,111.77 354.67,111.77 364.80,111.77 374.93,111.77 385.07,111.77 395.20,111.77 405.33,111.77 415.47,111.77 425.60,111.77 435.73,111.77 445.87,111.77 456.00,111.77 466.13,111.77 476.27,111.77 486.40,111.77 496.53,111.77 506.67,111.77 516.80,111.77 526.93,111.77 537.07,111.77 547.20,111.77 557.33,108.19 567.47,104.26 577.60,99.97 587.73,95.34 597.87,90.40 608.00,85.18 618.13,79.71 628.27,74.04 638.40,68.23 648.53,62.32 658.67,56.37 668.80,50.45 678.93,44.62 689.07,38.94 699.20,33.47 709.33,28.27 719.47,23.39 729.60,18.89 739.73,14.80 749.87,11.16 760.00,8.00" class="equity-line" fill="none" />
+    </svg>
+    </div>
+    </section>
+
+    <section>
+      <h2>因子明细</h2>
+      <div class="table-panel">
+    <table>
+      <thead>
+        <tr>
+          <th>标的</th>
+          <th>趋势</th>
+          <th>利差/政策</th>
+          <th>美元周期</th>
+          <th>新闻事件</th>
+          <th>风险情绪</th>
+        </tr>
+      </thead>
+      <tbody><tr><td>EUR/USD</td><td>-0.06</td><td>-0.67</td><td>-0.53</td><td>+0.17</td><td>+0.20</td></tr><tr><td>USD/JPY</td><td>+0.61</td><td>+1.00</td><td>+0.53</td><td>+0.00</td><td>+0.24</td></tr><tr><td>DXY</td><td>+0.39</td><td>+0.82</td><td>+0.53</td><td>-0.09</td><td>-0.40</td></tr></tbody>
+    </table>
+    </div>
+    </section>
+  </main>
+</body>
+</html>
