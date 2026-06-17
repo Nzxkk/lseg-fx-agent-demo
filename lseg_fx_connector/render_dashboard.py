@@ -8,9 +8,10 @@ from pathlib import Path
 import pandas as pd
 
 
-ROOT = Path("/Users/nzxkk/Desktop/vi/Vibe-Trading")
-OUTPUT_DIR = ROOT / "lseg_fx_connector/output"
-DASHBOARD_PATH = ROOT / "lseg_fx_connector/dashboard.html"
+CONNECTOR_DIR = Path(__file__).resolve().parent
+ROOT = CONNECTOR_DIR.parent
+OUTPUT_DIR = CONNECTOR_DIR / "output"
+DASHBOARD_PATH = CONNECTOR_DIR / "dashboard.html"
 
 
 def _read_csv(path: Path) -> pd.DataFrame:

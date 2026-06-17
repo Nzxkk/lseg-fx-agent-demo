@@ -23,8 +23,8 @@ from fx_agent import _load_agent_skills, read_latest_agent_run, run_fx_agent
 from llm_report import generate_llm_report, read_latest_llm_report
 
 
-ROOT = Path("/Users/nzxkk/Desktop/vi/Vibe-Trading")
-CONNECTOR_DIR = ROOT / "lseg_fx_connector"
+CONNECTOR_DIR = Path(__file__).resolve().parent
+ROOT = CONNECTOR_DIR.parent
 STATIC_DIR = CONNECTOR_DIR / "static"
 OUTPUT_DIR = CONNECTOR_DIR / "output"
 

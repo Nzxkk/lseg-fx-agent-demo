@@ -27,7 +27,7 @@ except ImportError:
 
 
 WATCHLIST = ["EUR/USD", "USD/JPY", "DXY_PROXY"]
-DEFAULT_OUTPUT_DIR = Path("/Users/nzxkk/Desktop/vi/Vibe-Trading/lseg_fx_connector/output")
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 
 @dataclass

@@ -15,8 +15,8 @@ from fx_agent import _load_agent_skills, read_latest_agent_run, run_fx_agent
 from llm_report import _extract_content, _llm_config, _validate_header_value, generate_llm_report, read_latest_llm_report
 
 
-ROOT = Path("/Users/nzxkk/Desktop/vi/Vibe-Trading")
-CONNECTOR_DIR = ROOT / "lseg_fx_connector"
+CONNECTOR_DIR = Path(__file__).resolve().parent
+ROOT = CONNECTOR_DIR.parent
 OUTPUT_DIR = CONNECTOR_DIR / "output"
 
 
@@ -568,6 +568,7 @@ def handle_chat(message: str, payload: Optional[Dict[str, Any]] = None) -> Dict[
     payload = dict(payload)
     if route.get("strategy_profile"):
         payload["llmStrategyProfile"] = route.get("strategy_profile")
+    payload["requestedSkills"] = route.get("skills", [])
     intent = route["intent"]
     if intent == "list_skills":
         return _with_skill_context(_skills_reply(), route)

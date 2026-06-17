@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/Users/nzxkk/Desktop/vi/Vibe-Trading"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-/Users/nzxkk/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3}"
 
 cd "$ROOT_DIR"

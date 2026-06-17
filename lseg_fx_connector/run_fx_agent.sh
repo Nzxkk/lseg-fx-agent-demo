@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/Users/nzxkk/Desktop/vi/Vibe-Trading"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if [[ -x "/Users/nzxkk/opt/anaconda3/bin/python" ]]; then
     PYTHON_BIN="/Users/nzxkk/opt/anaconda3/bin/python"
@@ -17,7 +17,7 @@ cd "$ROOT_DIR"
 import sys
 from pathlib import Path
 
-root = Path("/Users/nzxkk/Desktop/vi/Vibe-Trading")
+root = Path.cwd()
 sys.path.insert(0, str(root / "lseg_fx_connector"))
 
 from fx_agent import run_fx_agent

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/Users/nzxkk/Desktop/vi/Vibe-Trading"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if [[ -x "/Users/nzxkk/opt/anaconda3/bin/python" ]]; then
     PYTHON_BIN="/Users/nzxkk/opt/anaconda3/bin/python"

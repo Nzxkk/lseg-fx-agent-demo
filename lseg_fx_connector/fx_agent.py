@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-ROOT = Path("/Users/nzxkk/Desktop/vi/Vibe-Trading")
-CONNECTOR_DIR = ROOT / "lseg_fx_connector"
+CONNECTOR_DIR = Path(__file__).resolve().parent
+ROOT = CONNECTOR_DIR.parent
 OUTPUT_DIR = CONNECTOR_DIR / "output"
 SKILL_DIR = CONNECTOR_DIR / "fx_agent_skills"
 
@@ -196,10 +196,10 @@ def _skill_by_name(skills: List[Dict[str, str]], name: str) -> Dict[str, str]:
     return next((skill for skill in skills if skill.get("name") == name), {"name": name, "title": name, "category": "missing", "description": ""})
 
 
-def _build_skill_plan(skills: List[Dict[str, str]]) -> List[Dict[str, Any]]:
-    mapping = [
+SKILL_STEP_MAPPING = [
         ("理解任务", "research-workflow", "确认目标、标的范围、研究边界和输出标准。"),
         ("加载 Skills", "research-workflow", "读取本地 skill 文档并建立可追踪的执行计划。"),
+        ("选择 Skills", "research-workflow", "根据任务、聊天路由和页面设置选择本次真正参与执行的 skill。"),
         ("会话诊断", "lseg-session-diagnostics", "区分 Python 包、Workspace 会话、桌面代理、RIC 权限和新闻权限问题。"),
         ("生成行情", "lseg-fx-market-data", "拉取 LSEG/Refinitiv 行情并校验核心 RIC。"),
         ("DXY 处理", "dxy-proxy-construction", "直连 DXY 不可用时，用六个外汇成分构造 DXY_PROXY。"),
@@ -210,9 +210,105 @@ def _build_skill_plan(skills: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         ("风控复核", "fx-agent-risk-review", "检查数据完整性、新闻覆盖、仓位约束和影子回测。"),
         ("大模型报告", "fx-llm-report-writer", "基于已计算结果写中文报告，不生成行情或信号。"),
         ("整理结果", "fx-agent-risk-review", "输出交易候选、观察项、风险提示和中文报告。"),
+]
+
+
+def _ordered_skill_names(names: List[str]) -> List[str]:
+    ordered = []
+    available_order = [skill_name for _, skill_name, _ in SKILL_STEP_MAPPING]
+    available_order.extend(name for name in names if name not in available_order)
+    name_set = {name for name in names if name}
+    for name in available_order:
+        if name in name_set and name not in ordered:
+            ordered.append(name)
+    return ordered
+
+
+def _select_skill_names(objective: str, params: Dict[str, Any]) -> List[str]:
+    requested = params.get("requestedSkills") or []
+    if isinstance(requested, str):
+        requested_names = [item.strip() for item in requested.split(",") if item.strip()]
+    elif isinstance(requested, list):
+        requested_names = [str(item) for item in requested if item]
+    else:
+        requested_names = []
+
+    names = [
+        "research-workflow",
+        "lseg-session-diagnostics",
+        "lseg-fx-market-data",
+        "dxy-proxy-construction",
+        "reuters-fx-news-policy",
+        "fx-macro-signal-decision",
+        "fx-shadow-backtest",
+        "fx-agent-risk-review",
     ]
+    if requested_names:
+        names.extend(requested_names)
+    if params.get("ruleStrategy") == "eurusd_trend_pullback" or any(
+        params.get(key) is not None
+        for key in ("trendWeight", "carryWeight", "dollarWeight", "newsWeight", "riskWeight", "scoreThreshold")
+    ):
+        names.append("fx-factor-weighting")
+    objective_text = str(objective or "").lower()
+    if params.get("llmApiKey") or "报告" in objective_text or "report" in objective_text:
+        names.append("fx-llm-report-writer")
+    return _ordered_skill_names(names)
+
+
+def _skill_excerpt(path: str, limit: int = 1200) -> str:
+    try:
+        text = Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    _, body = _parse_skill_markdown(text)
+    useful_lines = []
+    for line in body.splitlines():
+        clean = line.strip()
+        if not clean:
+            continue
+        useful_lines.append(clean)
+        if len("\n".join(useful_lines)) >= limit:
+            break
+    return "\n".join(useful_lines)[:limit]
+
+
+def _build_active_skill_context(skills: List[Dict[str, str]], selected_names: List[str]) -> List[Dict[str, Any]]:
+    contexts = []
+    for name in selected_names:
+        skill = _skill_by_name(skills, name)
+        if skill.get("category") == "missing":
+            contexts.append(
+                {
+                    "name": name,
+                    "title": name,
+                    "category": "missing",
+                    "used": False,
+                    "usage": "本地 skill 文档缺失，不能参与执行。",
+                    "instruction_excerpt": "",
+                }
+            )
+            continue
+        contexts.append(
+            {
+                "name": skill.get("name"),
+                "title": skill.get("title"),
+                "category": skill.get("category"),
+                "path": skill.get("path"),
+                "used": True,
+                "usage": "已读取该 skill markdown，并用于本次 Agent 执行计划、参数解释和报告约束。",
+                "instruction_excerpt": _skill_excerpt(str(skill.get("path") or "")),
+            }
+        )
+    return contexts
+
+
+def _build_skill_plan(skills: List[Dict[str, str]], selected_names: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    selected = set(selected_names or [])
     plan = []
-    for step, skill_name, purpose in mapping:
+    for step, skill_name, purpose in SKILL_STEP_MAPPING:
+        if selected and skill_name not in selected:
+            continue
         skill = _skill_by_name(skills, skill_name)
         plan.append(
             {
@@ -221,6 +317,7 @@ def _build_skill_plan(skills: List[Dict[str, str]]) -> List[Dict[str, Any]]:
                 "title": skill.get("title"),
                 "category": skill.get("category"),
                 "purpose": purpose,
+                "invoked": skill_name in selected if selected else True,
                 "available": skill.get("category") != "missing",
             }
         )
@@ -352,6 +449,7 @@ def _build_agent_report(
     steps: List[Dict[str, Any]],
     skills: List[Dict[str, str]],
     skill_plan: List[Dict[str, Any]],
+    active_skills: List[Dict[str, Any]],
     signals: List[Dict[str, Any]],
     decisions: List[Dict[str, Any]],
     risk_checks: List[Dict[str, str]],
@@ -394,10 +492,23 @@ def _build_agent_report(
         status = "完成" if step.get("status") == "ok" else "失败"
         lines.append("- {}：{}。{}".format(step.get("name"), status, step.get("description")))
 
+    lines.extend(["", "## 本次实际调用 Skills"])
+    if active_skills:
+        for skill in active_skills:
+            lines.append(
+                "- {} [{}]：{}".format(
+                    skill.get("title") or skill.get("name"),
+                    skill.get("category") or "N/A",
+                    skill.get("usage") or "已参与本次流程。",
+                )
+            )
+    else:
+        lines.append("本次没有选出可执行 skill。")
+
     lines.extend(["", "## Skill 执行计划"])
     if skill_plan:
         for item in skill_plan:
-            state = "可用" if item.get("available") else "缺失"
+            state = "已调用" if item.get("invoked") else ("可用" if item.get("available") else "缺失")
             lines.append(
                 "- {step} -> {title} [{category}]：{state}。{purpose}".format(
                     step=item.get("step"),
@@ -496,10 +607,33 @@ def run_fx_agent(
             _load_agent_skills,
         )
     )
+    skills = steps[1].get("output") or []
+    selected_skill_names = _select_skill_names(objective=objective, params=params)
+    active_skills = _build_active_skill_context(skills=skills, selected_names=selected_skill_names)
+    skill_plan = _build_skill_plan(skills, selected_skill_names)
+    steps.append(
+        _run_step(
+            "选择 Skills",
+            "根据任务目标、聊天路由和页面设置选择本次真正参与执行的 skill。",
+            lambda: {
+                "selected": selected_skill_names,
+                "active_skills": [
+                    {
+                        "name": item.get("name"),
+                        "title": item.get("title"),
+                        "category": item.get("category"),
+                        "used": item.get("used"),
+                        "usage": item.get("usage"),
+                    }
+                    for item in active_skills
+                ],
+            },
+        )
+    )
     steps.append(
         _run_step(
             "生成信号",
-            "调用现有外汇宏观新闻信号引擎，拉取 LSEG 行情和 Reuters/LSEG 新闻。",
+            "按已选择的行情、新闻、DXY、权重、信号和回测 skills 调用外汇宏观新闻信号引擎。",
             lambda: _run_signal_engine(start=start, end=end, params=params),
         )
     )
@@ -527,8 +661,6 @@ def run_fx_agent(
         backtest = []
         news = []
     threshold = _optional_float(params.get("scoreThreshold")) or 0.35
-    skills = steps[1].get("output") or []
-    skill_plan = _build_skill_plan(skills)
     decisions = [_decision_for_signal(row, threshold) for row in signals]
     risk_checks = _build_risk_checks(steps=steps, signals=signals, summary=summary, news=news)
 
@@ -554,6 +686,7 @@ def run_fx_agent(
         steps=steps,
         skills=skills,
         skill_plan=skill_plan,
+        active_skills=active_skills,
         signals=signals,
         decisions=decisions,
         risk_checks=risk_checks,
@@ -573,6 +706,7 @@ def run_fx_agent(
         "params": _redact_params(params),
         "steps": steps,
         "skills": skills,
+        "active_skills": active_skills,
         "skill_plan": skill_plan,
         "signals": signals,
         "decisions": decisions,

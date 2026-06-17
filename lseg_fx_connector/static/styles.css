@@ -542,6 +542,10 @@ section {
   border-left-color: var(--red);
 }
 
+.skill-card.invoked {
+  border-left-color: var(--green);
+}
+
 .skill-top {
   display: flex;
   flex-wrap: wrap;

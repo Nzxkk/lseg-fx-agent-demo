@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-ROOT = Path("/Users/nzxkk/Desktop/vi/Vibe-Trading")
-CONNECTOR_DIR = ROOT / "lseg_fx_connector"
+CONNECTOR_DIR = Path(__file__).resolve().parent
+ROOT = CONNECTOR_DIR.parent
 OUTPUT_DIR = CONNECTOR_DIR / "output"
 LLM_REPORT_PATH = OUTPUT_DIR / "fx_macro_news_llm_report.md"
 AGENT_RUN_PATH = OUTPUT_DIR / "fx_agent_run.json"

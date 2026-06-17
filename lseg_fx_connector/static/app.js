@@ -230,10 +230,10 @@ function renderAgent() {
   const decisions = agent.decisions || [];
   const riskChecks = agent.risk_checks || [];
   skillPlanBox.innerHTML = skillPlan.length ? skillPlan.map(item => `
-    <article class="skill-card ${item.available ? 'available' : 'missing'}">
+    <article class="skill-card ${item.available ? (item.invoked ? 'invoked' : 'available') : 'missing'}">
       <div class="skill-top">
         <strong>${escapeHtml(item.step || '')}</strong>
-        <span>${escapeHtml(item.category || '')}</span>
+        <span>${escapeHtml(item.invoked ? '已调用' : (item.category || ''))}</span>
       </div>
       <h3>${escapeHtml(item.title || item.skill || '')}</h3>
       <p>${escapeHtml(item.purpose || '')}</p>

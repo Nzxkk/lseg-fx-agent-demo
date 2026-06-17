@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/Users/nzxkk/Desktop/vi/Vibe-Trading"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if command -v python >/dev/null 2>&1; then
     PYTHON_BIN="$(command -v python)"
