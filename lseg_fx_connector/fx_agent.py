@@ -15,7 +15,48 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+try:
+    from .fx_lseg_data import (
+        fetch_lseg_market_data,
+        fetch_lseg_reuters_news,
+        load_policy_rates,
+        load_ric_map,
+    )
+    from .fx_macro_news_demo import (
+        SignalConfig,
+        _backtest_summary,
+        _generate_signal_history,
+        _normalize_weights,
+        _shadow_backtest,
+        build_business_report,
+        generate_trade_signals,
+        load_market_data,
+        load_reuters_export,
+        prepare_news_output,
+    )
+    from .news_llm_score import score_news_with_llm
+except ImportError:
+    from fx_lseg_data import (
+        fetch_lseg_market_data,
+        fetch_lseg_reuters_news,
+        load_policy_rates,
+        load_ric_map,
+    )
+    from fx_macro_news_demo import (
+        SignalConfig,
+        _backtest_summary,
+        _generate_signal_history,
+        _normalize_weights,
+        _shadow_backtest,
+        build_business_report,
+        generate_trade_signals,
+        load_market_data,
+        load_reuters_export,
+        prepare_news_output,
+    )
+    from news_llm_score import score_news_with_llm
 
 
 CONNECTOR_DIR = Path(__file__).resolve().parent
@@ -343,6 +384,265 @@ def _run_signal_engine(start: Optional[str], end: Optional[str], params: Dict[st
     }
 
 
+def _signal_config(params: Dict[str, Any]) -> SignalConfig:
+    return SignalConfig(
+        trend_weight=_optional_float(params.get("trendWeight")) or 30.0,
+        carry_weight=_optional_float(params.get("carryWeight")) or 25.0,
+        dollar_weight=_optional_float(params.get("dollarWeight")) or 20.0,
+        news_weight=_optional_float(params.get("newsWeight")) or 15.0,
+        risk_weight=_optional_float(params.get("riskWeight")) or 10.0,
+        score_threshold=_optional_float(params.get("scoreThreshold")) or 0.35,
+        rule_strategy=str(params.get("ruleStrategy") or "factor_blend"),
+        news_score_mode=str(params.get("newsScoreMode") or "rule"),
+    )
+
+
+def _dataframe_preview(frame: Any, rows: int = 3) -> List[Dict[str, Any]]:
+    if frame is None or getattr(frame, "empty", True):
+        return []
+    preview = frame.head(rows).reset_index()
+    records = preview.to_dict(orient="records")
+    return json.loads(json.dumps(records, default=str, ensure_ascii=False))
+
+
+def _write_demo_outputs(context: Dict[str, Any]) -> Dict[str, Any]:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    signals = context.get("signals")
+    history = context.get("history")
+    backtest = context.get("backtest")
+    summary = context.get("summary")
+    news_output = context.get("news_output")
+    report = context.get("business_report") or ""
+    if signals is not None:
+        signals.to_csv(OUTPUT_DIR / "fx_macro_news_demo_signals.csv", index=False)
+    if history is not None:
+        history.to_csv(OUTPUT_DIR / "fx_macro_news_demo_signal_history.csv", index=False)
+    if backtest is not None:
+        backtest.to_csv(OUTPUT_DIR / "fx_macro_news_demo_shadow_backtest.csv", index=False)
+    if summary is not None:
+        summary.to_csv(OUTPUT_DIR / "fx_macro_news_demo_backtest_summary.csv", index=False)
+    if news_output is not None:
+        news_output.to_csv(OUTPUT_DIR / "fx_macro_news_demo_news.csv", index=False)
+    (OUTPUT_DIR / "fx_macro_news_demo_report.md").write_text(report, encoding="utf-8")
+    return {
+        "signals_path": str(OUTPUT_DIR / "fx_macro_news_demo_signals.csv"),
+        "backtest_path": str(OUTPUT_DIR / "fx_macro_news_demo_shadow_backtest.csv"),
+        "news_path": str(OUTPUT_DIR / "fx_macro_news_demo_news.csv"),
+        "report_path": str(OUTPUT_DIR / "fx_macro_news_demo_report.md"),
+    }
+
+
+def _skill_research_workflow(context: Dict[str, Any]) -> Dict[str, Any]:
+    context["execution_mode"] = "skill_registry"
+    return {
+        "objective": context.get("objective"),
+        "selected_skills": context.get("selected_skill_names", []),
+        "output_standard": "signals + shadow backtest + risk checks + Chinese report",
+    }
+
+
+def _skill_session_diagnostics(context: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        import lseg.data as _rd  # noqa: F401
+
+        library = "lseg.data"
+    except ImportError:
+        try:
+            import refinitiv.data as _rd  # noqa: F401
+
+            library = "refinitiv.data"
+        except ImportError as exc:
+            raise RuntimeError("未安装 lseg-data/refinitiv.data，无法通过 LSEG Data Library 拉取真实数据。") from exc
+    context["lseg_library"] = library
+    return {
+        "library": library,
+        "note": "Python 数据包存在；Workspace 会话和权限会在行情/新闻 skill 中实际验证。",
+    }
+
+
+def _skill_market_data(context: Dict[str, Any]) -> Dict[str, Any]:
+    params = context["params"]
+    start = context.get("start") or "2025-01-01"
+    end = context.get("end")
+    if params.get("marketDataPath"):
+        market = load_market_data(params.get("marketDataPath"))
+        source = "CSV 行情"
+    else:
+        market = fetch_lseg_market_data(
+            start=start,
+            end=end or __import__("datetime").date.today().isoformat(),
+            ric_map=load_ric_map(CONNECTOR_DIR / "lseg_ric_map.json"),
+            policy_rates=load_policy_rates(CONNECTOR_DIR / "policy_rates.json"),
+        )
+        source = "LSEG/Refinitiv 行情"
+    context["market"] = market
+    context["market_source"] = source
+    return {
+        "source": source,
+        "rows": int(len(market)),
+        "columns": list(market.columns),
+        "start": str(market.index.min().date()) if len(market) else None,
+        "end": str(market.index.max().date()) if len(market) else None,
+        "preview": _dataframe_preview(market),
+    }
+
+
+def _skill_dxy_proxy(context: Dict[str, Any]) -> Dict[str, Any]:
+    market = context.get("market")
+    if market is None:
+        raise RuntimeError("DXY 处理需要先执行行情 skill。")
+    dxy_column = "DXY" if "DXY" in market.columns else "DXY_PROXY"
+    usable = market[dxy_column].dropna() if dxy_column in market else []
+    if len(usable) == 0:
+        raise RuntimeError("DXY/DXY_PROXY 没有可用数据。")
+    context["dxy_column"] = dxy_column
+    return {
+        "dxy_column": dxy_column,
+        "latest": float(usable.iloc[-1]),
+        "note": "直连 DXY 缺失时，行情 skill 已调用 DXY proxy 构造逻辑。",
+    }
+
+
+def _skill_news_policy(context: Dict[str, Any]) -> Dict[str, Any]:
+    params = context["params"]
+    if params.get("newsPath"):
+        news = load_reuters_export(params.get("newsPath"))
+        source = "Reuters 新闻 CSV"
+    else:
+        news = fetch_lseg_reuters_news(
+            "Reuters AND (EUR/USD OR USD/JPY OR DXY OR Fed OR ECB OR BOJ OR inflation OR payrolls)",
+            count=100,
+        )
+        source = "LSEG/Reuters 新闻"
+    if context.get("config").news_score_mode == "llm":
+        news = score_news_with_llm(news)
+        source = "{} + 大模型评分".format(source)
+    context["news"] = news
+    context["news_source"] = source
+    return {
+        "source": source,
+        "rows": int(len(news)),
+        "columns": list(news.columns),
+        "preview": _dataframe_preview(news),
+    }
+
+
+def _skill_factor_weighting(context: Dict[str, Any]) -> Dict[str, Any]:
+    config = context["config"]
+    weights = _normalize_weights(config)
+    context["normalized_weights"] = weights
+    return {
+        "rule_strategy": config.rule_strategy,
+        "news_score_mode": config.news_score_mode,
+        "score_threshold": config.score_threshold,
+        "normalized_weights": weights,
+    }
+
+
+def _skill_signal_decision(context: Dict[str, Any]) -> Dict[str, Any]:
+    market = context.get("market")
+    news = context.get("news")
+    if market is None:
+        raise RuntimeError("生成信号需要先执行行情 skill。")
+    if news is None:
+        raise RuntimeError("生成信号需要先执行新闻 skill。")
+    signals = generate_trade_signals(market, news, context["config"])
+    history = _generate_signal_history(market, news, context["config"])
+    context["signals"] = signals
+    context["history"] = history
+    return {
+        "signals": _dataframe_preview(signals, rows=5),
+        "history_rows": int(len(history)),
+    }
+
+
+def _skill_shadow_backtest(context: Dict[str, Any]) -> Dict[str, Any]:
+    market = context.get("market")
+    history = context.get("history")
+    if market is None or history is None:
+        raise RuntimeError("影子回测需要先执行行情和信号 skill。")
+    backtest = _shadow_backtest(market, history)
+    summary = _backtest_summary(backtest)
+    context["backtest"] = backtest
+    context["summary"] = summary
+    return {
+        "summary": _dataframe_preview(summary, rows=1),
+        "backtest_rows": int(len(backtest)),
+    }
+
+
+def _skill_risk_review(context: Dict[str, Any]) -> Dict[str, Any]:
+    signals = context.get("signals")
+    summary = context.get("summary")
+    news = context.get("news")
+    if signals is None:
+        raise RuntimeError("风控复核需要先生成信号。")
+    max_weight = 0.0
+    if not signals.empty and "target_weight" in signals:
+        max_weight = float(signals["target_weight"].abs().max())
+    return {
+        "signal_rows": int(len(signals)),
+        "summary_rows": int(len(summary)) if summary is not None else 0,
+        "news_rows": int(len(news)) if news is not None else 0,
+        "max_abs_target_weight": max_weight,
+        "status": "pass" if len(signals) >= 3 and max_weight <= 1.0 else "watch",
+    }
+
+
+def _skill_llm_report_writer(context: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "status": "ready",
+        "note": "该 skill 绑定报告写作边界；实际大模型报告仍由页面“生成中文报告”按钮触发。",
+    }
+
+
+SKILL_EXECUTORS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
+    "research-workflow": _skill_research_workflow,
+    "lseg-session-diagnostics": _skill_session_diagnostics,
+    "lseg-fx-market-data": _skill_market_data,
+    "dxy-proxy-construction": _skill_dxy_proxy,
+    "reuters-fx-news-policy": _skill_news_policy,
+    "fx-factor-weighting": _skill_factor_weighting,
+    "fx-macro-signal-decision": _skill_signal_decision,
+    "fx-shadow-backtest": _skill_shadow_backtest,
+    "fx-agent-risk-review": _skill_risk_review,
+    "fx-llm-report-writer": _skill_llm_report_writer,
+}
+
+
+def _run_skill_executor(skill_name: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    executor = SKILL_EXECUTORS.get(skill_name)
+    if executor is None:
+        return {"skipped": True, "reason": "该 skill 暂无绑定 executor。"}
+    return executor(context)
+
+
+def _finalize_bound_skill_outputs(context: Dict[str, Any]) -> Dict[str, Any]:
+    news = context.get("news")
+    signals = context.get("signals")
+    summary = context.get("summary")
+    if signals is None:
+        raise RuntimeError("没有生成信号，无法整理输出。")
+    news_output = prepare_news_output(news)
+    context["news_output"] = news_output
+    report = build_business_report(
+        signals,
+        summary,
+        news_output,
+        market_source=context.get("market_source") or "未知行情来源",
+        news_source=context.get("news_source") or "未知新闻来源",
+    )
+    context["business_report"] = report
+    artifact_paths = _write_demo_outputs(context)
+    return {
+        "signals": int(len(signals)),
+        "summary": int(len(summary)) if summary is not None else 0,
+        "backtest": int(len(context.get("backtest"))) if context.get("backtest") is not None else 0,
+        "news": int(len(news_output)),
+        "artifacts": artifact_paths,
+    }
+
+
 def _classify_signal(row: Dict[str, Any], threshold: float) -> str:
     side = str(row.get("side") or "HOLD").upper()
     score = _optional_float(row.get("composite_score")) or 0.0
@@ -389,18 +689,19 @@ def _build_risk_checks(
 ) -> List[Dict[str, str]]:
     checks: List[Dict[str, str]] = []
     signal_step = next((step for step in steps if step.get("name") == "生成信号"), {})
+    failed_step = next((step for step in steps if step.get("status") == "error"), {})
     engine_output = signal_step.get("output") or {}
-    engine_error = str(signal_step.get("error") or engine_output.get("stderr") or "")
+    engine_error = str(failed_step.get("error") or signal_step.get("error") or engine_output.get("stderr") or "")
     if "新闻大模型评分" in engine_error or "RemoteDisconnected" in engine_error:
         connection_message = "LSEG 行情/新闻已进入流程，但大模型新闻评分失败。可检查 API Key/模型/接口地址，或改用规则评分。"
-    elif engine_output.get("returncode") == 0:
-        connection_message = "信号引擎已完成 LSEG/Refinitiv 拉取。"
+    elif signal_step.get("status") == "ok" and signals:
+        connection_message = "已通过绑定的行情、新闻、信号和回测 skills 完成 LSEG/Refinitiv 流程。"
     else:
-        connection_message = "LSEG/Refinitiv 拉取或信号生成失败。"
+        connection_message = "LSEG/Refinitiv 拉取或某个 skill executor 失败。"
     checks.append(
         {
             "name": "真实数据连接",
-            "status": "通过" if signal_step.get("status") == "ok" and engine_output.get("returncode") == 0 else "未通过",
+            "status": "通过" if signal_step.get("status") == "ok" and signals else "未通过",
             "message": connection_message,
         }
     )
@@ -630,31 +931,43 @@ def run_fx_agent(
             },
         )
     )
-    steps.append(
-        _run_step(
-            "生成信号",
-            "按已选择的行情、新闻、DXY、权重、信号和回测 skills 调用外汇宏观新闻信号引擎。",
-            lambda: _run_signal_engine(start=start, end=end, params=params),
-        )
-    )
-    signal_step = steps[-1]
-    signal_result = signal_step.get("output") or {}
-    if signal_step.get("status") != "ok" or signal_result.get("returncode") != 0:
-        signal_step["status"] = "error"
-        signal_step["error"] = signal_result.get("stderr") or signal_result.get("stdout") or "signal engine failed"
 
-    engine_ok = signal_step.get("status") == "ok" and signal_result.get("returncode") == 0
-    if engine_ok:
+    context: Dict[str, Any] = {
+        "objective": objective,
+        "start": start,
+        "end": end,
+        "params": params,
+        "config": _signal_config(params),
+        "selected_skill_names": selected_skill_names,
+    }
+    for plan_item in skill_plan:
+        skill_name = str(plan_item.get("skill") or "")
+        if plan_item.get("step") in {"理解任务", "加载 Skills", "选择 Skills"}:
+            continue
+        steps.append(
+            _run_step(
+                str(plan_item.get("step") or skill_name),
+                "调用 skill executor：{}。{}".format(plan_item.get("title") or skill_name, plan_item.get("purpose") or ""),
+                lambda skill_name=skill_name: _run_skill_executor(skill_name, context),
+            )
+        )
+
+    pipeline_ok = all(step.get("status") == "ok" for step in steps)
+    if pipeline_ok:
+        steps.append(
+            _run_step(
+                "整理结果",
+                "把各 skill 生成的行情、新闻、信号和回测写入页面需要的输出文件。",
+                lambda: _finalize_bound_skill_outputs(context),
+            )
+        )
+        pipeline_ok = steps[-1].get("status") == "ok"
+
+    if pipeline_ok:
         signals = _read_csv_records(OUTPUT_DIR / "fx_macro_news_demo_signals.csv")
         summary = _read_csv_records(OUTPUT_DIR / "fx_macro_news_demo_backtest_summary.csv")
         backtest = _read_csv_records(OUTPUT_DIR / "fx_macro_news_demo_shadow_backtest.csv")
         news = _read_csv_records(OUTPUT_DIR / "fx_macro_news_demo_news.csv")
-        if not signals:
-            signal_step["status"] = "error"
-            signal_step["error"] = (
-                "signal engine completed but produced no fx_macro_news_demo_signals.csv rows; "
-                "check LSEG data/news permissions and the signal engine output."
-            )
     else:
         signals = []
         summary = []
@@ -663,20 +976,6 @@ def run_fx_agent(
     threshold = _optional_float(params.get("scoreThreshold")) or 0.35
     decisions = [_decision_for_signal(row, threshold) for row in signals]
     risk_checks = _build_risk_checks(steps=steps, signals=signals, summary=summary, news=news)
-
-    steps.append(
-        _run_step(
-            "整理结果",
-            "读取信号、回测摘要、新闻列表，生成交易候选、观察项和中文 Agent 报告。",
-            lambda: {
-                "signals": len(signals),
-                "summary": len(summary),
-                "backtest": len(backtest),
-                "news": len(news),
-                "decisions": len(decisions),
-            },
-        )
-    )
 
     report = _build_agent_report(
         objective=objective,
