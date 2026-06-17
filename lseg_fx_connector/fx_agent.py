@@ -250,7 +250,6 @@ SKILL_STEP_MAPPING = [
         ("影子回测", "fx-shadow-backtest", "用历史信号和市场收益生成净值、回撤和摘要指标。"),
         ("风控复核", "fx-agent-risk-review", "检查数据完整性、新闻覆盖、仓位约束和影子回测。"),
         ("大模型报告", "fx-llm-report-writer", "基于已计算结果写中文报告，不生成行情或信号。"),
-        ("整理结果", "fx-agent-risk-review", "输出交易候选、观察项、风险提示和中文报告。"),
 ]
 
 
